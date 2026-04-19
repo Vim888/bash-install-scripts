@@ -1,0 +1,52 @@
+TGSECRET=$(head -c 16 /dev/urandom | xxd -ps -c 16)
+TGPORT=1950
+TGCLIENTSECRET="dd${TGSECRET}"
+
+sudo apt update
+sudo apt install -y git curl build-essential libssl-dev zlib1g-dev xxd
+
+cd /opt
+if [ ! -d /opt/MTProxy ]; then
+  sudo git clone https://github.com/TelegramMessenger/MTProxy.git
+fi
+
+cd /opt/MTProxy
+sudo make
+
+cd /opt/MTProxy/objs/bin
+sudo curl -fsSL https://core.telegram.org/getProxySecret -o proxy-secret
+sudo curl -fsSL https://core.telegram.org/getProxyConfig -o proxy-multi.conf
+
+sudo ./mtproto-proxy \
+  -u nobody \
+  -p 8888 \
+  -H "$TGPORT" \
+  -S "$TGSECRET" \
+  --aes-pwd proxy-secret proxy-multi.conf \
+  -M 1
+
+sudo tee /etc/systemd/system/mtproxy.service > /dev/null <<EOF
+[Unit]
+Description=Telegram MTProxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/MTProxy/objs/bin
+ExecStart=/opt/MTProxy/objs/bin/mtproto-proxy -u nobody -p 8888 -H ${TGPORT} -S ${TGSECRET} --aes-pwd /opt/MTProxy/objs/bin/proxy-secret /opt/MTProxy/objs/bin/proxy-multi.conf -M 1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo ufw allow ${TGPORT}/tcp
+sudo ufw reload
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now mtproxy
+sudo systemctl status mtproxy --no-pager -l
+
+echo "tg://proxy?server=$(curl -4 -fsSL ifconfig.me)&port=${TGPORT}&secret=${TGCLIENTSECRET}"
