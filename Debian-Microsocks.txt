@@ -1,0 +1,28 @@
+TMP_PRXLOGIN=yt
+TMP_PRXPASS=pr0Xs_y
+TMP_PRXPORT=43380
+
+apt install -y sudo microsocks
+
+sudo tee /etc/systemd/system/microsocks.service > /dev/null <<EOF
+[Unit]
+Description=microsocks SOCKS5 server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+#EnvironmentFile=/etc/microsocks.conf
+ExecStart=/usr/bin/microsocks -p ${TMP_PRXPORT} -u ${TMP_PRXLOGIN} -P ${TMP_PRXPASS}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+
+ufw allow 43380/tcp
+ufw reload
+
+systemctl daemon-reload
+systemctl enable --now microsocks
