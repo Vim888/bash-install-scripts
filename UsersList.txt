@@ -1,0 +1,23 @@
+printf "%-20s %-6s %-20s %-6s %-15s %-5s %-14s\n" "USER" "UID" "SHELL" "PASS" "EXPIRES" "KEYS" "Login_allowed"
+for u in $(cut -d: -f1 /etc/passwd); do
+  uid=$(id -u $u 2>/dev/null || echo "-")
+  shell=$(getent passwd $u | cut -d: -f7)
+  pass=$(sudo passwd -S $u 2>/dev/null | awk '{print $2}' || echo "N/A")
+  exp=$(sudo chage -l $u 2>/dev/null | awk -F: '/Account expires/ {print $2}' | xargs || echo "N/A")
+  keys=$(sudo test -f /home/$u/.ssh/authorized_keys && echo "yes" || echo "no")
+  case "$shell" in /usr/sbin/nologin|/bin/false|"") shell_ok=no;; *) shell_ok=yes;; esac
+  pass_ok=no
+  if [ "$pass" = "P" ] || [ "$pass" = "NP" ]; then pass_ok=yes; fi
+  exp_ok=yes
+  if [ "$exp" != "N/A" ]; then
+    if echo "$exp" | grep -qi "never"; then exp_ok=yes; else
+      if date -d "$exp" >/dev/null 2>&1; then
+        if [ "$(date -d "$exp" +%s)" -lt "$(date +%s)" ]; then exp_ok=no; fi
+      else
+        exp_ok=no
+      fi
+    fi
+  fi
+  if [ "$shell_ok" = "yes" ] && [ "$exp_ok" = "yes" ] && ( [ "$pass_ok" = "yes" ] || [ "$keys" = "yes" ] ); then login_allowed=yes; else login_allowed=no; fi
+  printf "%-20s %-6s %-20s %-6s %-15s %-5s %-14s\n" "$u" "$uid" "$shell" "$pass" "$exp" "$keys" "$login_allowed"
+done
